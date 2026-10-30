@@ -1,0 +1,14 @@
+# qq-agent-host：把 QQ 会话做成第一等的 DSH agent。
+#
+# 与 qq-mode-console 的关键区别：那个插件只是往 DSH 设置里写一个 mode，
+# 真正的收发逻辑在独立的 bridge 进程里。这个插件把**整个链路搬进 DSH 进程**：
+#   SnowLuma OneBot ↔ 本插件 ↔ ctx.agents.create() 出来的 agent
+# 于是 prompt 装配（systemPrompt.section/context/tools）和回合驱动（agent.followup）
+# 都在进程内完成，不需要 HTTP、也不需要把配置塞进对话。
+#
+# `enabled` 默认 false：DSH 启动时插件会加载，但不会自启，避免和现有 bridge 抢号。
+- insert:
+    - id: qq-agent-host
+      name: qq-agent-host
+      config:
+        enabled: true

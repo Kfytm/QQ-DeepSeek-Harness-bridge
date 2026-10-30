@@ -1,0 +1,32 @@
+{
+  "name": "qq-agent-host",
+  "version": "0.1.0",
+  "description": "Hosts QQ conversations as first-class DSH agents: SnowLuma OneBot messages drive an agent, and all prompt/role/tool composition happens through the systemPrompt service instead of being stuffed into the conversation.",
+  "type": "module",
+  "main": "./index.js",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ]
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "react": "*"
+  }
+}
