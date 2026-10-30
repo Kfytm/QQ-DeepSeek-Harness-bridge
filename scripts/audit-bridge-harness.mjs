@@ -135,6 +135,8 @@ export async function bridgeHarness({ config = {}, savedState, files = {}, globa
     // 发言后冷却窗口（P1）：arm 时间戳、窗口结束合并投递、唤醒调度入口。
     scheduleWakeV2, armSpeakCooldownV2, armCdFlushV2, clearSocialV2Timers,
     buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2,
+    // 唤醒触发判定：@别人 vs @她、@全体、关键词/名字/提问/概率、speakerIds 订阅。
+    evaluateWakeTriggerV2,
     refreshMode, modeAllowed, trackTurnEvent, replayPendingWakeReasonsV2,
     collectors, setupSleepTimerV2,
     getInitialPrompt, setInitialPrompt, loadInitialPrompts, formatInitialPromptV2,

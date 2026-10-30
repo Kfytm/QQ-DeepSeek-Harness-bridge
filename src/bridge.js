@@ -11759,18 +11759,61 @@ export async function startBridge(options = {}) {
     if (silentGroups.length && silentGroups.includes(String(key).split(':')[1] || '')) return null;
     const tr = st.wakeConfig?.triggers ?? {};
     if (tr.anyMessage) return 'anyMessage';
+
+    // ── @ 了别人（而且没 @ 她、也不是 @全体）⇒ 这是别人之间的对话 ──────────────
+    //
+    // 为什么要有这一条：atMention 分支本身只认「@ 的是她自己」，但**后面几条
+    // （名字/关键词/提问/概率）完全不看她是不是在跟别人说话**。于是「@B 大肥鱼呢」
+    // 这种点名别人的句子，会因为关键词把她叫醒，从群友视角就是「人家在 @ 别人，
+    // 她突然冒出来插嘴」。
+    //
+    // 规则：@ 了别人时，除非她被引用（quoteTargetIsSelf），否则只有显式订阅
+    // 「指定成员发言」(speakerIds) 能唤醒 —— 那是使用者自己配的，意图明确。
+    // @全体成员（qq=all）不算「@别人」，仍然走正常判定。
+    const atSegs = Array.isArray(event?.message)
+      ? event.message.filter((seg) => seg?.type === 'at')
+      : [];
+    if (atSegs.length > 0) {
+      const selfId = String(event?.self_id ?? '');
+      const atSelf = atSegs.some((seg) => String(seg?.data?.qq) === selfId);
+      const atAll = atSegs.some((seg) => String(seg?.data?.qq) === 'all');
+      if (!atSelf && !atAll && !quoteTargetIsSelf) {
+        const speakerIds = Array.isArray(tr.speakerIds) ? tr.speakerIds : [];
+        const speakerId = String(event?.user_id ?? event?.sender?.user_id ?? '');
+        if (speakerIds.length && speakerId && speakerIds.some((id) => String(id) === speakerId)) {
+          const senderLabel = event?.sender?.card || event?.sender?.nickname || speakerId;
+          return `speaker:${senderLabel}`;
+        }
+        // 其余（名字/关键词/提问/概率）一律不唤醒：他在跟别人说话，别插嘴。
+        return null;
+      }
+    }
+
     if (tr.atMention) {
-      const atSelf = Array.isArray(event?.message) && event.message.some((seg) => seg?.type === 'at' && String(seg.data?.qq) === String(event?.self_id ?? ''));
+      const atSelf = atSegs.some((seg) => String(seg?.data?.qq) === String(event?.self_id ?? ''));
       if (atSelf || quoteTargetIsSelf) return 'atMention';
     }
+    // @ 段的显示文本要从「用于匹配关键词/名字的正文」里剔掉（**只剔 @ 别人的**，
+    // @她 / @全体 的文本保留，避免把「只 @ 她、没打正文」这条原有触发路径弄丢）。
+    //
+    // 为什么：群友的昵称本身就可能含关键词（本群有人叫「总司家的大肥鱼」，而关键词表里
+    // 正好有「大肥鱼」）。不剔除的话，「@总司家的大肥鱼 你好」会因为**被 @ 的那个人叫大肥鱼**
+    // 而把她叫醒 —— 字面上她确实"被提到了"，但没人是在叫她。
+    const selfIdForAt = String(event?.self_id ?? '');
+    const plainForMatch = atSegs.reduce((acc, seg) => {
+      const qq = String(seg?.data?.qq ?? '');
+      if (qq === selfIdForAt || qq === 'all') return acc;
+      const shown = String(seg?.data?.text ?? '');
+      return shown ? acc.split(shown).join(' ') : acc;
+    }, String(plainContent ?? ''));
     if (tr.nameMention && selfNickname) {
       // 用 plainContent（当前消息自己的文字）：textContent 含 `[引用 某人：原文]`，
       // 引用一条恰好提到机器人昵称的旧消息不该算「叫了名字」（那是被动触发的付费回合）。
-      const lower = String(plainContent ?? '').toLowerCase();
+      const lower = String(plainForMatch).toLowerCase();
       if (lower.includes('@' + selfNickname.toLowerCase()) || lower.includes(selfNickname.toLowerCase())) return 'nameMention';
     }
     if (Array.isArray(tr.keywords) && tr.keywords.length) {
-      const lower = String(plainContent ?? '').toLowerCase();
+      const lower = String(plainForMatch).toLowerCase();
       for (const kw of tr.keywords) {
         const kwStr = String(kw ?? '').toLowerCase();
         if (!kwStr) continue;
@@ -11782,7 +11825,7 @@ export async function startBridge(options = {}) {
         }
       }
     }
-    if (tr.question && isDirectedAtAi(plainContent)) return 'question';
+    if (tr.question && isDirectedAtAi(plainForMatch)) return 'question';
     if (Array.isArray(tr.speakerIds) && tr.speakerIds.length) {
       const speakerId = String(event?.user_id ?? event?.sender?.user_id ?? '');
       if (speakerId && tr.speakerIds.some((id) => String(id) === speakerId)) {

@@ -97,6 +97,9 @@ const tests = [
   // 「主动机会醒了但无事可做 → 刷一轮 B 站」：分支开关、冷却（防止一夜刷十几轮）、
   // 冷却水位要落盘、以及原有「开个话题」主路径不能被写丢。
   'test-bili-idle-branch.mjs',
+  // 唤醒触发边界：群里 @ 别人（且没 @ 她）时，关键词/名字/提问/概率都不该叫醒她；
+  // @她 / @全体 / 引用她 / speakerIds 订阅 / anyMessage 仍要照常唤醒。
+  'test-wake-at-others.mjs',
 ];
 let failed = 0;
 for (const test of tests) {
