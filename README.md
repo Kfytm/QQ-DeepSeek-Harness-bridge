@@ -1,5 +1,16 @@
 # QQ ↔ DeepSeek Harness 桥接
 
+> ## 关于本项目
+>
+> 本项目最初 fork 自 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)，
+> 之后做了较大改造：**桥接不再当 HTTP 客户端遥控 DSH，而是装成 DSH 插件在进程内建 agent**。
+> 本仓库地址：[Kfytm/QQ-DeepSeek-Harness-bridge](https://github.com/Kfytm/QQ-DeepSeek-Harness-bridge)。
+>
+> 因此：
+> - **下面的「版本 / Release 对应表」指的是原项目的版本**，不是本仓库的；
+> - 推荐用法见 [插件化模式（推荐）](#插件化模式推荐)；
+> - 独立进程模式（`start.bat`）仍然可用，用于回退。
+
 **English**: [README.en.md](README.en.md) | **中文**: [README.md](README.md)
 
 > 🗂️ 文档索引（全部文档一句话说明 + 是否仍然有效）见 **[docs/README.md](docs/README.md)**；仓库目录/脚本命名约定见 **[docs/FOLDER_MAP.md](docs/FOLDER_MAP.md)**。
@@ -10,7 +21,7 @@
 
 把 QQ 消息接入 DSH agent：QQ 好友/群发来的消息会变成 DSH 会话里的用户消息，agent 的回复（含提问、工具审批）会发回 QQ。
 
-> ⚠️ **当前版本 `v0.2.0-r4`，适配 DSH 0.2.0-rc.2**（在该版本上逐项实测：`npm run verify:adaptation`）。
+> ⚠️ **以下版本号属于原项目**（`v0.2.0-r4` / 适配 DSH 0.2.0-rc.2）（在该版本上逐项实测：`npm run verify:adaptation`）。
 > 鉴权用 `~/.dsh` 里持久化的浏览器会话签名密钥**离线铸造 Cookie** —— DSH 0.1.7 起进程启动 token
 > 只存在于内存、不再落盘，旧版「从 guard 日志里读 token」的方式已失效。agent preset 是 DSH 0.1.7 起的
 > `@deepseek-ai/dsh-agent-preset` Cordis 行（`~/.dsh/.agent-presets/` 目录机制已废）。协议代次
@@ -196,8 +207,8 @@ node scripts/setup-dsh.mjs
 
 2. **装桥接并复制配置**
    ```bash
-   git clone https://github.com/Derpyu520/qq-bridge.git
-   cd qq-bridge
+   git clone https://github.com/Kfytm/QQ-DeepSeek-Harness-bridge.git
+   cd QQ-DeepSeek-Harness-bridge
    npm install
    ```
    Windows CMD 用 `copy config.example.json config.json`，其他平台用 `cp config.example.json config.json`。
