@@ -35,6 +35,17 @@ export function userMessage(text) {
  * @param {Function} [deps.onAgentCreated]  agent 建好后的回调（用于装 prompt 段/工具）
  * @param {Function} deps.log      日志函数
  */
+// ── 只有 QQ 会话（group:群号 / private:QQ号）才配得上 persona 与运行时面板 ──────
+//
+// 为什么必须判：桥接还会建**黑话学习 agent**（targetKey = `slang-learner`）。它走
+// `runtimePanelV2 → getSocialV2State` 这条路，而后者用 `canonicalV2Key` 严格校验 key，
+// 非 `group:/private:` 一律 `throw new Error('无效的会话 key')`。
+// 那个函数是作为 `systemPrompt.context` 注册的，每轮装配都求值 —— 于是一个本该跑
+// 「挑黑话」的 agent，turn/start 之后立刻以 `reason.kind = 'error'` 收尾，日志里
+// 只有一行「学习会话 turn 未正常完成：error」，真正的原因被吊在半路的异常里。
+const QQ_SESSION_KEY = /^(group|private):\d+$/;
+const isQqSessionKey = (targetKey) => QQ_SESSION_KEY.test(String(targetKey ?? ''));
+
 export function createDshAdapter({ ctx, config = {}, log = () => {}, hooks = null, onAgentCreated = null }) {
   /** serverSessionId -> { agent, handle } */
   const live = new Map();
@@ -123,6 +134,9 @@ export function createDshAdapter({ ctx, config = {}, log = () => {}, hooks = nul
             throw new Error(`挂载 preset ${agentPreset} 失败：${error?.message ?? error}`);
           }
         }
+        if (!isQqSessionKey(targetKey) && (hooks?.roleCardBlock || hooks?.runtimePanel)) {
+          log(`[adapter] ${targetKey} 不是 QQ 会话 key，跳过角色卡/运行时面板装配（否则每轮装配都会抛「无效的会话 key」把 turn 打断）`);
+        }
         // 这里是**唯一**该装配这个 agent 人格/工具的地方：
         // agentCtx 是 agent 作用域，注册的东西只影响这一个 agent。
         //
@@ -130,7 +144,7 @@ export function createDshAdapter({ ctx, config = {}, log = () => {}, hooks = nul
         //   · section 的 text 接受函数、每次装配都求值 ⇒ 换卡后下次唤醒自动用新卡；
         //   · 卡全文逐字不变 ⇒ 属于稳定前缀，缓存能命中（放 user message 里会被
         //     当成每轮新内容重发，1000+ 字符白烧）。
-        if (hooks?.roleCardBlock && agentCtx?.systemPrompt?.section) {
+        if (hooks?.roleCardBlock && agentCtx?.systemPrompt?.section && isQqSessionKey(targetKey)) {
           try {
             agentCtx.systemPrompt.section({
               name: 'qq:role-card',
@@ -145,7 +159,7 @@ export function createDshAdapter({ ctx, config = {}, log = () => {}, hooks = nul
         // 运行时面板（此刻状态 / 当前唤醒 / 参与度 / 表情库）走 context()：
         // 这些是每轮重算的「背景状态」，不属于「对方说了什么」，
         // 放进 user message 会一轮轮往历史里堆。context 每轮重新求值、不追加。
-        if (hooks?.runtimePanel && agentCtx?.systemPrompt?.context) {
+        if (hooks?.runtimePanel && agentCtx?.systemPrompt?.context && isQqSessionKey(targetKey)) {
           try {
             agentCtx.systemPrompt.context({
               name: 'qq:runtime',

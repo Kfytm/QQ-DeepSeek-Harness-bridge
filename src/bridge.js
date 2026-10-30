@@ -2826,7 +2826,10 @@ export async function startBridge(options = {}) {
         queueSlangTask(() => runSlangResearch(researchCandidates));
       }
     } catch (error) {
-      if (/会话|session|not found|404/i.test(String(error?.message ?? error))) {
+      // 「turn 失败」不等于「会话失效」。旧条件里有裸的 /会话/，而 turn 失败的消息
+      // 恰好含「学习会话」二字 ⇒ 每轮失败都会把 slang-session.json 删掉、下一轮再建一个
+      // 全新会话（日志里 session id 每次都不一样正是这个原因），失败现场当场被销毁。
+      if (!error?.learnerTurnFailed && /not[ -]?found|不存在|404|没有找到|找不到|已失效/i.test(String(error?.message ?? error))) {
         invalidateSlangLearnerSession();
       }
       log(`黑话提取失败 (${key}):`, error?.message ?? error);
@@ -2878,7 +2881,7 @@ export async function startBridge(options = {}) {
       saveSlangStore();
       log(`黑话研究：已更新 ${results.length} 条候选解释`);
     } catch (error) {
-      if (/会话|session|not found|404/i.test(String(error?.message ?? error))) {
+      if (!error?.learnerTurnFailed && /not[ -]?found|不存在|404|没有找到|找不到|已失效/i.test(String(error?.message ?? error))) {
         invalidateSlangLearnerSession();
       }
       log('黑话研究失败:', error?.message ?? error);
@@ -13324,7 +13327,16 @@ export async function startBridge(options = {}) {
                     if (learnerEnded.reason.kind === 'completed' && learnerEnded.text.trim()) {
                       waiter.resolve(learnerEnded.text);
                     } else {
-                      waiter.reject(new Error(`学习会话 turn 未正常完成：${learnerEnded.reason.kind}`));
+                      // 只报 kind 会把根因吞掉：'error' 背后可能是 prompt 装配抛异常、
+                      // 模型侧拒绝、工具报错……日志里只剩一句「未正常完成：error」，
+                      // 排查时根本不知道发生了什么。reason 整个带上。
+                      let detail = '';
+                      try { detail = JSON.stringify(learnerEnded.reason); } catch { detail = String(learnerEnded.reason); }
+                      const failure = new Error(`学习会话 turn 未正常完成：${learnerEnded.reason.kind}${detail ? `｜reason=${detail}` : ''}`);
+                      // 打标记：这是「回合失败」，不是「会话失效」。两者的处置完全不同 ——
+                      // 前者要修 turn 本身，后者才该重建会话。
+                      failure.learnerTurnFailed = true;
+                      waiter.reject(failure);
                     }
                   }
                   // 旧学习会话 turn 结束后从集合移除，避免残留
