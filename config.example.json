@@ -70,7 +70,7 @@
       8
     ],
     "injectMax": 8,
-    "learnerPreset": "qq-chat",
+    "learnerPreset": "standard",
     "workspaceTitle": "QQ 黑话学习",
     "autoResearch": true
   },

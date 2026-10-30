@@ -1218,7 +1218,9 @@ function loadConfigBase() {
       extractCooldownMs: 5 * 60 * 1000,
       inferenceThresholds: [2, 4, 8],
       injectMax: 8,
-      learnerPreset: 'qq-chat',
+      // 黑话学习用不带 QQ 工具的 standard：learner 只需要文本推理，
+      // 给了 QQ 工具它就会去调 qq_get_prompt(key="slang-learner") 并每轮报错。
+      learnerPreset: 'standard',
       workspaceTitle: 'QQ 黑话学习',
       autoResearch: true,
       ...(file.slang ?? {})
@@ -2699,7 +2701,13 @@ export async function startBridge(options = {}) {
   }
 
   async function ensureSlangLearnerSession() {
-    const preset = resolvePresetName(cfg.slang?.learnerPreset || cfg.agentPreset, { strict: true });
+    // 黑话学习只需要「从文本里挑黑话」的推理能力，**不需要任何工具**。
+    // 之前默认回落到 cfg.agentPreset（qq-chat-v2），那个 preset 带全套 QQ MCP 工具，
+    // 于是 learner agent 会照着 prompt 去调 qq_get_prompt(key="slang-learner")，
+    // 而 "slang-learner" 不是合法会话 key（getSocialV2State 只认 group:/private:）
+    // ⇒ 每个 turn 都 error，黑话提取稳定失败（日志里每 5 分钟一条）。
+    // 默认值改成 standard（DSH 内置、不带 QQ 工具），显式配置仍可覆盖。
+    const preset = resolvePresetName(cfg.slang?.learnerPreset || 'standard', { strict: true });
     if (!preset) throw new Error('黑话学习缺少已验证的安全 preset，拒绝创建或复用会话');
     const saved = readJsonSafe(SLANG_SESSION_FILE, null);
     // 旧记录没有 preset 元数据，无法证明其权限，必须重新创建。
