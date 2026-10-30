@@ -94,6 +94,9 @@ const tests = [
   //   · 静默检测不得冒充 hook 检测（心跳是 SnowLuma 本地定时器无条件发的）；
   //   · 客户端库版本不得低于 bot_status 出现的版本。
   'test-snowluma-upstream-health.mjs',
+  // 「主动机会醒了但无事可做 → 刷一轮 B 站」：分支开关、冷却（防止一夜刷十几轮）、
+  // 冷却水位要落盘、以及原有「开个话题」主路径不能被写丢。
+  'test-bili-idle-branch.mjs',
 ];
 let failed = 0;
 for (const test of tests) {

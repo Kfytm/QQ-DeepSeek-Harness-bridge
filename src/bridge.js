@@ -1365,7 +1365,15 @@ function loadConfigBase() {
         checkIntervalMinMs: 30 * 60 * 1000,
         checkIntervalMaxMs: 90 * 60 * 1000,
         idleThresholdMs: 15 * 60 * 1000,
-        probability: 0.3
+        probability: 0.3,
+        // 「无事可做就去刷一轮 B 站」：主动机会唤醒时，如果她想不出要说什么，
+        // 给她一个出口，而不是直接潜水。刷的是 bili_run（dsh-bili-scroll 的工具，
+        // 已在 qq-tool-restrict 的白名单前缀 bili_ 里），它 spawn 一个 headless 会话
+        // 后台跑、**立刻返回**，不会卡住这一轮回合。
+        // 冷却：同一个会话 biliIdleCooldownMs 内只给一次机会 —— 否则每 15~30 分钟
+        // 一次的主动机会都披着「去刷B站」，一夜能刷十几轮，每轮都是真实的模型调用。
+        biliWhenIdle: true,
+        biliIdleCooldownMs: 2 * 60 * 60 * 1000
       },
       feedback: {
         maxLength: 500,
@@ -10062,6 +10070,8 @@ export async function startBridge(options = {}) {
             replyCheckTimer: null,
             proactiveTimer: null,
             lastIncomingAt: Number(val.lastIncomingAt) || 0,
+            // 刷 B 站的冷却水位（见 buildWakePromptV2 的 proactiveCheck 分支）
+            biliIdleAt: Number(val.biliIdleAt) || 0,
             preSleepWaitSatisfiedAt: Number(val.preSleepWaitSatisfiedAt) || 0,
             preSleepWaitObservedAt: Number(val.preSleepWaitObservedAt) || 0,
             preSleepWaitAccumMs: Number(val.preSleepWaitAccumMs) || 0,
@@ -10151,6 +10161,8 @@ export async function startBridge(options = {}) {
           sendTimes: st.sendTimes.slice(-500),
           stickerCollectTimes: Array.isArray(st.stickerCollectTimes) ? st.stickerCollectTimes.slice(-500) : [],
           lastIncomingAt: st.lastIncomingAt || 0,
+          // 「上次因为无事可做去刷 B 站」的时刻：要落盘，否则每次 DSH 重启冷却就归零。
+          biliIdleAt: st.biliIdleAt || 0,
           preSleepWaitSatisfiedAt: st.preSleepWaitSatisfiedAt || 0,
           preSleepWaitObservedAt: st.preSleepWaitObservedAt || 0,
           preSleepWaitAccumMs: st.preSleepWaitAccumMs || 0,
@@ -12012,7 +12024,21 @@ export async function startBridge(options = {}) {
     } else if (reason === 'replyCheck') {
       body = `${base}【回复检查】${key}\n原因：你刚刚发送过消息，现在回来检查是否有人回复。\n已有回复时先看消息，需要短静默就用 qq_wait_for_messages(purpose="reply") 判断对方是否说完；如果没人回你，不用硬补一句，但也不要立刻潜水——先调用 qq_wait_for_messages(timeoutMs=${preSleepMs}) 完成沉睡前观察：没人说话可收尾；有人说话则查看 newMessages，不需要你参与也可直接收尾（qq_mark_read 或 qq_set_wake_config）。`;
     } else if (reason === 'proactiveCheck') {
-      body = `${base}【主动机会】${key}\n原因：群里已经安静了一段时间，这是一次你可以主动冒泡的机会。\n优先主动开个话题、追问上次没聊完的事、分享一个刚想到的想法；如果一时想不到，可以用 mcp__web-search-safe__web_search 搜一下当前热点/时事/网络热梗，再结合记忆里的群友兴趣挑一个自然角度。只要内容自然，就大胆开口；如果实在没话想说，再安静收尾（qq_mark_read 或 qq_set_wake_config）。`;
+      // 「主动机会来了但真的没话可说」时，给一个「去刷一轮 B 站」的出口。
+      //
+      // 为什么要桥接侧限流、而不是只写进提示词：主动机会每 15~30 分钟就轮到一次，
+      // 如果每一条提示都挂着「没话说就去刷B站」，一夜能刷十几轮 —— 每轮都是一次
+      // 真实的 headless 模型调用（烧 token、也占 B 站额度）。所以只有冷却期过了才
+      // 把这个分支挂上去，其余时候她仍然只有「开个话题」或「安静收尾」两条路。
+      const pb = cfg.socialV2?.proactive ?? {};
+      const biliCooldown = Math.max(0, Number(pb.biliIdleCooldownMs ?? 2 * 60 * 60 * 1000));
+      const biliDue = pb.biliWhenIdle !== false
+        && Date.now() - Number(st.biliIdleAt || 0) >= biliCooldown;
+      if (biliDue) st.biliIdleAt = Date.now();
+      const biliBranch = biliDue
+        ? '\n【实在没话可说时】不要就这么潜水：调 bili_run 刷一轮 B 站（它立刻返回、后台跑，会挑几条值得看的写成日报）。刷完再安静收尾（qq_mark_read 或 qq_set_wake_config）；下一次醒来再看刷出来的东西，有值得分享的就自然说一句（比如"刚刷到个…"），不要当成任务汇报念出来。'
+        : '';
+      body = `${base}【主动机会】${key}\n原因：群里已经安静了一段时间，这是一次你可以主动冒泡的机会。\n优先主动开个话题、追问上次没聊完的事、分享一个刚想到的想法；如果一时想不到，可以用 mcp__web-search-safe__web_search 搜一下当前热点/时事/网络热梗，再结合记忆里的群友兴趣挑一个自然角度。只要内容自然，就大胆开口；如果实在没话想说，再安静收尾（qq_mark_read 或 qq_set_wake_config）。${biliBranch}`;
     } else if (reason === 'poke') {
       body = `${base}【唤醒】${key}\n原因：有人拍了一拍（可能拍了你，也可能拍了别人）。\n先看未读/最近消息里的 [拍一拍] 事件：如果是拍你，可以自然回应一句，也可以用 qq_send_poke 回一个拍一拍；如果是拍别人，觉得有趣也可以接梗。除了回应，偶尔也可以主动戳一下正在聊的人/熟人，像真人手贱/提醒/逗一下，但别频繁。不想接就安静收尾（qq_mark_read 或 qq_set_wake_config）。`;
     } else {
