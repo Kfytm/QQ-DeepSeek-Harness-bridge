@@ -219,8 +219,10 @@ export async function apply(ctx, config) {
             }
             if (typeof patch.consoleToken === 'string') raw.consoleToken = patch.consoleToken;
             if (typeof patch.ownerQQ === 'string') raw.ownerQQ = patch.ownerQQ;
-            if (Array.isArray(patch.allowPrivate)) raw.allow.private = patch.allowPrivate.join(',');
-            if (Array.isArray(patch.allowGroups)) raw.allow.groups = patch.allowGroups.join(',');
+            // ⚠️ 必须写成**数组**：桥接的 normalizeIdList() 只认数组，字符串会直接返回空，
+            // 于是白名单判定为空、整个桥接不响应任何消息（实测踩过）。
+            if (Array.isArray(patch.allowPrivate)) raw.allow.private = patch.allowPrivate.map(String).filter(Boolean);
+            if (Array.isArray(patch.allowGroups)) raw.allow.groups = patch.allowGroups.map(String).filter(Boolean);
             fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n', 'utf8');
             // enabled / agentPreset 属于 DSH 层配置（插件的 Config），走 settings
             const settingsPatch = {};
@@ -346,10 +348,12 @@ export async function apply(ctx, config) {
   if (config.consoleToken) configOverrides.consoleToken = config.consoleToken;
   if (config.ownerQQ) configOverrides.ownerQQ = config.ownerQQ;
   if (Array.isArray(config.allowPrivate) && config.allowPrivate.length) {
-    configOverrides['allow.private'] = config.allowPrivate.join(',');
+    // ⚠️ 保持数组：loadConfig 会原样覆盖到 cfg.allow.private，
+    // 而 normalizeIdList() 只认数组 —— join(',') 会让白名单变成空（静默失效）。
+    configOverrides['allow.private'] = config.allowPrivate.map(String);
   }
   if (Array.isArray(config.allowGroups) && config.allowGroups.length) {
-    configOverrides['allow.groups'] = config.allowGroups.join(',');
+    configOverrides['allow.groups'] = config.allowGroups.map(String);
   }
   if (Object.keys(configOverrides).length) {
     log(`配置覆盖：${Object.keys(configOverrides).join(
